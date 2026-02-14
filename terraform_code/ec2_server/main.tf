@@ -193,24 +193,26 @@ resource "aws_instance" "my-ec2" {
 
       # Install Kubectl
       # Ref: https://docs.aws.amazon.com/eks/latest/userguide/install-kubectl.html#kubectl-install-update
-      "curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.30.4/2024-09-11/bin/linux/amd64/kubectl",
-      "curl -O https://s3.us-west-2.amazonaws.com/amazon-eks/1.30.4/2024-09-11/bin/linux/amd64/kubectl.sha256",
-      "sha256sum -c kubectl.sha256",
-      "openssl sha1 -sha256 kubectl",
-      "chmod +x ./kubectl",
-      "mkdir -p $HOME/bin && cp ./kubectl $HOME/bin/kubectl && export PATH=$HOME/bin:$PATH",
-      "echo 'export PATH=$HOME/bin:$PATH' >> ~/.bashrc",
-      "sudo mv $HOME/bin/kubectl /usr/local/bin/kubectl",
-      "sudo chmod +x /usr/local/bin/kubectl",
-      "kubectl version --client",
+       "curl -LO \"https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl\"",
+       "curl -LO \"https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl.sha256\"",
+       "echo \"$(cat kubectl.sha256)  kubectl\" | sha256sum --check",
+       "chmod +x ./kubectl",
+       "mkdir -p $HOME/bin && cp ./kubectl $HOME/bin/kubectl && export PATH=$HOME/bin:$PATH",
+       "echo 'export PATH=$HOME/bin:$PATH' >> ~/.bashrc",
+       "sudo mv $HOME/bin/kubectl /usr/local/bin/kubectl",
+       "sudo chmod +x /usr/local/bin/kubectl",
+       "kubectl version --client",
+
 
       # Install Helm
       # Ref: https://helm.sh/docs/intro/install/
       # Ref (for .tar.gz file): https://github.com/helm/helm/releases
-      "wget https://get.helm.sh/helm-v3.16.1-linux-amd64.tar.gz",
-      "tar -zxvf helm-v3.16.1-linux-amd64.tar.gz",
-      "sudo mv linux-amd64/helm /usr/local/bin/helm",
-      "helm version",
+      "VERSION=$(curl -L -s https://raw.githubusercontent.com/argoproj/argo-cd/stable/VERSION)",
+      "curl -sSL -o argocd-linux-amd64 https://github.com/argoproj/argo-cd/releases/download/v$VERSION/argocd-linux-amd64",
+      "sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd",
+      "rm argocd-linux-amd64",
+      "argocd version --client",
+
 
       # Install ArgoCD
       # Ref: https://argo-cd.readthedocs.io/en/stable/cli_installation/
@@ -219,20 +221,28 @@ resource "aws_instance" "my-ec2" {
       "sudo install -m 555 argocd-linux-amd64 /usr/local/bin/argocd",
       "rm argocd-linux-amd64", 
 
-      # Install Java 17
+      # Install Java 21 
       # Ref: https://www.rosehosting.com/blog/how-to-install-java-17-lts-on-ubuntu-20-04/
-      "sudo apt update -y",
-      "sudo apt install openjdk-17-jdk openjdk-17-jre -y",
-      "java -version",
+      "sudo apt-get update -y",
+      "sudo apt-get install -y fontconfig openjdk-21-jre",
 
       # Install Jenkins
       # Ref: https://www.jenkins.io/doc/book/installing/linux/#debianubuntu
-      "sudo wget -O /usr/share/keyrings/jenkins-keyring.asc https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key",
+      # Add Jenkins Key (LATEST)
+      "curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2026.key | sudo tee /usr/share/keyrings/jenkins-keyring.asc > /dev/null",
+
+      # Add Jenkins Repo
       "echo \"deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/\" | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null",
-      "sudo apt-get update -y",
-      "sudo apt-get install -y jenkins",
-      "sudo systemctl start jenkins",
-      "sudo systemctl enable jenkins",
+
+     # Update again (IMPORTANT)
+     "sudo apt-get update -y",
+
+     # Install Jenkins
+     "sudo apt-get install -y jenkins",
+
+     # Enable + Start
+     "sudo systemctl enable jenkins",
+     "sudo systemctl start jenkins",
 
       # Get Jenkins initial login password
       "ip=$(curl -s ifconfig.me)",
