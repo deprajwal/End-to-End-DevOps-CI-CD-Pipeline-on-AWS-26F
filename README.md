@@ -53,6 +53,10 @@ This project demonstrates deploying an Amazon Prime clone using a set of DevOps 
      terraform init
      terraform apply --auto-approve
      ```
+	 this is the correct command to delete all resources created by Terraform.
+	 ```
+       terraform destroy --auto-approve
+     ```
 
 This will create the EC2 instance, security groups, and install necessary tools like Jenkins, Docker, SonarQube, etc.
 
