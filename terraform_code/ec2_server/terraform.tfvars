@@ -1,6 +1,6 @@
 # DEFINE ALL YOUR VARIABLES HERE
 
-instance_type = "t2.medium"
+instance_type = "t2.xlarge"
 ami           = "ami-0b6c6ebed2801a5cb"   # Ubuntu 24.04
 key_name      = "key"                     # Replace with your key-name without .pem extension
 volume_size   = 30
