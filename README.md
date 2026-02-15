@@ -93,117 +93,153 @@ Create a Jenkins pipeline by adding the following script:
 ### Build Pipeline
 
 ```groovy
-pipeline {
+
+    pipeline {
     agent any
-    
+
     parameters {
         string(name: 'ECR_REPO_NAME', defaultValue: 'amazon-prime', description: 'Enter repository name')
-        string(name: 'AWS_ACCOUNT_ID', defaultValue: '123456789012', description: 'Enter AWS Account ID') // Added missing quote
+        string(name: 'AWS_ACCOUNT_ID', defaultValue: '123456789012', description: 'Enter AWS Account ID')
     }
-    
+
     tools {
-        jdk 'JDK'
+        jdk 'jdk21'
         nodejs 'NodeJS'
     }
-    
+
     environment {
         SCANNER_HOME = tool 'SonarQube Scanner'
+        AWS_REGION = "us-east-1"
     }
-    
+
     stages {
+
+        /* ===================== */
         stage('1. Git Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/pandacloud1/DevopsProject2.git'
+                git branch: 'main',
+                url: 'https://github.com/deprajwal/End-to-End-DevOps-CI-CD-Pipeline-on-AWS-26F.git'
             }
         }
-        
+
+        /* ===================== */
         stage('2. SonarQube Analysis') {
             steps {
-                withSonarQubeEnv ('sonar-server') {
+                withSonarQubeEnv('sonar-server') {
                     sh """
-                    $SCANNER_HOME/bin/sonar-scanner \
+                    ${SCANNER_HOME}/bin/sonar-scanner \
                     -Dsonar.projectName=amazon-prime \
                     -Dsonar.projectKey=amazon-prime
                     """
                 }
             }
         }
-        
+
+        /* ===================== */
         stage('3. Quality Gate') {
             steps {
-                waitForQualityGate abortPipeline: false, 
-                credentialsId: 'sonar-token'
+                timeout(time: 5, unit: 'MINUTES') {
+                    waitForQualityGate abortPipeline: false
+                }
             }
         }
-        
+
+        /* ===================== */
         stage('4. Install npm') {
             steps {
                 sh "npm install"
             }
         }
-        
+
+        /* ===================== */
         stage('5. Trivy Scan') {
             steps {
-                sh "trivy fs . > trivy.txt"
+                sh "trivy fs . > trivy.txt || true"
             }
         }
-        
+
+        /* ===================== */
         stage('6. Build Docker Image') {
             steps {
-                sh "docker build -t ${params.ECR_REPO_NAME} ."
+                sh """
+                docker build -t ${params.ECR_REPO_NAME} .
+                """
             }
         }
-        
+
+        /* ===================== */
         stage('7. Create ECR repo') {
             steps {
-                withCredentials([string(credentialsId: 'access-key', variable: 'AWS_ACCESS_KEY'), 
-                                 string(credentialsId: 'secret-key', variable: 'AWS_SECRET_KEY')]) {
+                withCredentials([
+                    string(credentialsId: 'access-key', variable: 'AWS_ACCESS_KEY'),
+                    string(credentialsId: 'secret-key', variable: 'AWS_SECRET_KEY')
+                ]) {
                     sh """
-                    aws configure set aws_access_key_id $AWS_ACCESS_KEY
-                    aws configure set aws_secret_access_key $AWS_SECRET_KEY
-                    aws ecr describe-repositories --repository-names ${params.ECR_REPO_NAME} --region us-east-1 || \
-                    aws ecr create-repository --repository-name ${params.ECR_REPO_NAME} --region us-east-1
+                    aws configure set aws_access_key_id \$AWS_ACCESS_KEY
+                    aws configure set aws_secret_access_key \$AWS_SECRET_KEY
+                    aws configure set region ${AWS_REGION}
+
+                    aws ecr describe-repositories \
+                    --repository-names ${params.ECR_REPO_NAME} \
+                    --region ${AWS_REGION} || \
+                    aws ecr create-repository \
+                    --repository-name ${params.ECR_REPO_NAME} \
+                    --region ${AWS_REGION}
                     """
                 }
             }
         }
-        
+
+        /* ===================== */
         stage('8. Login to ECR & tag image') {
             steps {
-                withCredentials([string(credentialsId: 'access-key', variable: 'AWS_ACCESS_KEY'), 
-                                 string(credentialsId: 'secret-key', variable: 'AWS_SECRET_KEY')]) {
-                    sh """
-                    aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com
-                    docker tag ${params.ECR_REPO_NAME} ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:${BUILD_NUMBER}
-                    docker tag ${params.ECR_REPO_NAME} ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:latest
-                    """
-                }
+                sh """
+                aws ecr get-login-password --region ${AWS_REGION} | \
+                docker login --username AWS --password-stdin \
+                ${params.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+                docker tag ${params.ECR_REPO_NAME} \
+                ${params.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${params.ECR_REPO_NAME}:${BUILD_NUMBER}
+
+                docker tag ${params.ECR_REPO_NAME} \
+                ${params.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${params.ECR_REPO_NAME}:latest
+                """
             }
         }
-        
+
+        /* ===================== */
         stage('9. Push image to ECR') {
             steps {
-                withCredentials([string(credentialsId: 'access-key', variable: 'AWS_ACCESS_KEY'), 
-                                 string(credentialsId: 'secret-key', variable: 'AWS_SECRET_KEY')]) {
-                    sh """
-                    docker push ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:${BUILD_NUMBER}
-                    docker push ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:latest
-                    """
-                }
+                sh """
+                docker push ${params.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${params.ECR_REPO_NAME}:${BUILD_NUMBER}
+                docker push ${params.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${params.ECR_REPO_NAME}:latest
+                """
             }
         }
-        
+
+        /* ===================== */
         stage('10. Cleanup Images') {
             steps {
                 sh """
-                docker rmi ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:${BUILD_NUMBER}
-                docker rmi ${params.AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${params.ECR_REPO_NAME}:latest
-		docker images
+                docker rmi ${params.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${params.ECR_REPO_NAME}:${BUILD_NUMBER} || true
+                docker rmi ${params.AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${params.ECR_REPO_NAME}:latest || true
+                docker image prune -f
                 """
             }
         }
     }
+
+    post {
+        success {
+            echo "Pipeline completed successfully 🚀"
+        }
+        failure {
+            echo "Pipeline failed ❌"
+        }
+    }
 }
+  
+            
 ```
 
 ## Continuous Deployment with ArgoCD
