@@ -1,4 +1,4 @@
-# Amazon Prime Clone Deployment Project
+# Deployment Project
 
 
 ## Project Overview
